@@ -1,0 +1,31 @@
+#ifndef TOK
+#define TOK(X)
+#endif
+
+#ifndef PUNCTUATOR
+#define PUNCTUATOR(X, Y) TOK(X)
+#endif
+
+#ifndef KEYWORD
+#define KEYWORD(X, Y) TOK(kw_ ## X)
+#endif
+
+TOK(unknown)
+TOK(eof)
+TOK(identifier)
+TOK(numeric_constant)
+
+PUNCTUATOR(l_paren, "(")
+PUNCTUATOR(r_paren, ")")
+PUNCTUATOR(l_brace, "{")
+PUNCTUATOR(r_brace, "}")
+PUNCTUATOR(semi, ";")
+
+#define KEYALL 1
+KEYWORD(int, KEYALL)
+KEYWORD(return, KEYALL)
+#undef KEYALL
+
+#undef KEYWORD
+#undef PUNCTUATOR
+#undef TOK
