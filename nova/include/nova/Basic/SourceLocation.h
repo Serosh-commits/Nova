@@ -209,4 +209,45 @@ public:
   }
 };
 
+class PresumedLoc {
+  const char *Filename = nullptr;
+  unsigned Line = 0;
+  unsigned Col = 0;
+  SourceLocation IncludeLoc;
+
+public:
+  PresumedLoc() noexcept = default;
+  PresumedLoc(const char *FN, unsigned L, unsigned C, SourceLocation IL) noexcept
+      : Filename(FN), Line(L), Col(C), IncludeLoc(IL) {}
+
+  [[nodiscard]] bool isValid() const noexcept { return Filename != nullptr; }
+  [[nodiscard]] bool isInvalid() const noexcept { return !isValid(); }
+
+  [[nodiscard]] const char *getFilename() const noexcept { return Filename; }
+  [[nodiscard]] unsigned getLine() const noexcept { return Line; }
+  [[nodiscard]] unsigned getColumn() const noexcept { return Col; }
+  [[nodiscard]] SourceLocation getIncludeLoc() const noexcept { return IncludeLoc; }
+};
+
+class FullSourceLoc : public SourceLocation {
+  const SourceManager *SrcMgr = nullptr;
+
+public:
+  FullSourceLoc() noexcept = default;
+  FullSourceLoc(SourceLocation Loc, const SourceManager &Mgr) noexcept
+      : SourceLocation(Loc), SrcMgr(&Mgr) {}
+
+  [[nodiscard]] bool hasManager() const noexcept { return SrcMgr != nullptr; }
+  [[nodiscard]] const SourceManager &getManager() const noexcept {
+    assert(SrcMgr && "SourceManager is null");
+    return *SrcMgr;
+  }
+
+  [[nodiscard]] FileID getFileID() const noexcept;
+  [[nodiscard]] unsigned getSpellingLineNumber() const noexcept;
+  [[nodiscard]] unsigned getSpellingColumnNumber() const noexcept;
+  [[nodiscard]] const char *getCharacterData() const noexcept;
+  [[nodiscard]] PresumedLoc getPresumedLoc() const noexcept;
+};
+
 } // namespace nova
