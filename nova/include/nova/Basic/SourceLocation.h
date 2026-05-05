@@ -2,6 +2,7 @@
 
 #include <cassert>
 #include <cstdint>
+#include <utility>
 
 namespace nova {
 
@@ -20,7 +21,7 @@ public:
     return ID == RHS.ID;
   }
   constexpr bool operator!=(const FileID &RHS) const noexcept {
-    return ID != RHS.ID;
+    return !(*this == RHS);
   }
   constexpr bool operator<(const FileID &RHS) const noexcept {
     return ID < RHS.ID;
@@ -29,10 +30,17 @@ public:
     return ID <= RHS.ID;
   }
   constexpr bool operator>(const FileID &RHS) const noexcept {
-    return ID > RHS.ID;
+    return RHS < *this;
   }
   constexpr bool operator>=(const FileID &RHS) const noexcept {
-    return ID >= RHS.ID;
+    return RHS <= *this;
+  }
+
+  [[nodiscard]] static constexpr FileID getSentinel() noexcept {
+    return get(-1);
+  }
+  [[nodiscard]] unsigned getHashValue() const noexcept {
+    return static_cast<unsigned>(ID);
   }
 
 private:
@@ -90,7 +98,7 @@ public:
     return ID == RHS.ID;
   }
   constexpr bool operator!=(const SourceLocation &RHS) const noexcept {
-    return ID != RHS.ID;
+    return !(*this == RHS);
   }
   constexpr bool operator<(const SourceLocation &RHS) const noexcept {
     return ID < RHS.ID;
@@ -99,11 +107,19 @@ public:
     return ID <= RHS.ID;
   }
   constexpr bool operator>(const SourceLocation &RHS) const noexcept {
-    return ID > RHS.ID;
+    return RHS < *this;
   }
   constexpr bool operator>=(const SourceLocation &RHS) const noexcept {
-    return ID >= RHS.ID;
+    return RHS <= *this;
   }
+
+  [[nodiscard]] static bool isPairOfFileLocations(SourceLocation Start,
+                                                  SourceLocation End) noexcept {
+    return Start.isValid() && Start.isFileID() && End.isValid() &&
+           End.isFileID();
+  }
+
+  [[nodiscard]] unsigned getHashValue() const noexcept { return ID; }
 
 private:
   friend class SourceManager;
@@ -153,7 +169,11 @@ public:
     return B == X.B && E == X.E;
   }
   constexpr bool operator!=(const SourceRange &X) const noexcept {
-    return B != X.B || E != X.E;
+    return !(*this == X);
+  }
+
+  [[nodiscard]] bool fullyContains(const SourceRange &other) const noexcept {
+    return B <= other.B && E >= other.E;
   }
 };
 
@@ -171,17 +191,23 @@ public:
     return CharSourceRange(R, true);
   }
   [[nodiscard]] static constexpr CharSourceRange
-  getTokenRange(SourceLocation B, SourceLocation E) noexcept {
-    return getTokenRange(SourceRange(B, E));
-  }
-
-  [[nodiscard]] static constexpr CharSourceRange
   getCharRange(SourceRange R) noexcept {
     return CharSourceRange(R, false);
   }
   [[nodiscard]] static constexpr CharSourceRange
+  getTokenRange(SourceLocation B, SourceLocation E) noexcept {
+    return getTokenRange(SourceRange(B, E));
+  }
+  [[nodiscard]] static constexpr CharSourceRange
   getCharRange(SourceLocation B, SourceLocation E) noexcept {
     return getCharRange(SourceRange(B, E));
+  }
+
+  [[nodiscard]] constexpr bool isTokenRange() const noexcept {
+    return IsTokenRange;
+  }
+  [[nodiscard]] constexpr bool isCharRange() const noexcept {
+    return !IsTokenRange;
   }
 
   [[nodiscard]] constexpr SourceLocation getBegin() const noexcept {
@@ -194,12 +220,8 @@ public:
     return Range;
   }
 
-  [[nodiscard]] constexpr bool isTokenRange() const noexcept {
-    return IsTokenRange;
-  }
-  [[nodiscard]] constexpr bool isCharRange() const noexcept {
-    return !IsTokenRange;
-  }
+  constexpr void setBegin(SourceLocation b) noexcept { Range.setBegin(b); }
+  constexpr void setEnd(SourceLocation e) noexcept { Range.setEnd(e); }
 
   [[nodiscard]] constexpr bool isValid() const noexcept {
     return Range.isValid();
@@ -211,22 +233,27 @@ public:
 
 class PresumedLoc {
   const char *Filename = nullptr;
+  FileID ID;
   unsigned Line = 0;
   unsigned Col = 0;
   SourceLocation IncludeLoc;
 
 public:
   PresumedLoc() noexcept = default;
-  PresumedLoc(const char *FN, unsigned L, unsigned C, SourceLocation IL) noexcept
-      : Filename(FN), Line(L), Col(C), IncludeLoc(IL) {}
+  PresumedLoc(const char *FN, FileID FID, unsigned L, unsigned C,
+              SourceLocation IL) noexcept
+      : Filename(FN), ID(FID), Line(L), Col(C), IncludeLoc(IL) {}
 
   [[nodiscard]] bool isValid() const noexcept { return Filename != nullptr; }
   [[nodiscard]] bool isInvalid() const noexcept { return !isValid(); }
 
   [[nodiscard]] const char *getFilename() const noexcept { return Filename; }
+  [[nodiscard]] FileID getFileID() const noexcept { return ID; }
   [[nodiscard]] unsigned getLine() const noexcept { return Line; }
   [[nodiscard]] unsigned getColumn() const noexcept { return Col; }
-  [[nodiscard]] SourceLocation getIncludeLoc() const noexcept { return IncludeLoc; }
+  [[nodiscard]] SourceLocation getIncludeLoc() const noexcept {
+    return IncludeLoc;
+  }
 };
 
 class FullSourceLoc : public SourceLocation {
@@ -248,6 +275,18 @@ public:
   [[nodiscard]] unsigned getSpellingColumnNumber() const noexcept;
   [[nodiscard]] const char *getCharacterData() const noexcept;
   [[nodiscard]] PresumedLoc getPresumedLoc() const noexcept;
+  [[nodiscard]] bool
+  isBeforeInTranslationUnitThan(SourceLocation Loc) const noexcept;
+
+  friend bool operator==(const FullSourceLoc &LHS,
+                         const FullSourceLoc &RHS) noexcept {
+    return LHS.getRawEncoding() == RHS.getRawEncoding() &&
+           LHS.SrcMgr == RHS.SrcMgr;
+  }
+  friend bool operator!=(const FullSourceLoc &LHS,
+                         const FullSourceLoc &RHS) noexcept {
+    return !(LHS == RHS);
+  }
 };
 
 } // namespace nova
